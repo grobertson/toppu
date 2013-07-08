@@ -5,10 +5,18 @@ from time import strptime
 import re, shlex, subprocess, datetime
 import curses
 
-#TODO: Add better command line args. For now the first and only argument to toppu is the heroku appname you wish to monitor. 
+import optparse
+parser = optparse.OptionParser()
+
+# handle app declaration
+parser.add_option('-a', action="store", dest="app")
+parser.add_option('--app', action="store", dest="app")
+
+options, args = parser.parse_args()
 
 try:
-    APP_NAME = sys.argv[1]
+    assert options.app is not None
+    APP_NAME = options.app
 except:
     print "toppu - Top-like command line performance monitoring for Heroku"
     print "https://github.com/grobertson/toppu"
