@@ -12,16 +12,23 @@ parser = optparse.OptionParser()
 parser.add_option('-a', action="store", dest="app")
 parser.add_option('--app', action="store", dest="app")
 
+# handle app declaration
+parser.add_option('-t', action="store", dest="timeout", type="int")
+parser.add_option('--timeout', action="store", dest="timeout", type="int")
+parser.set_defaults(timeout=2000)
+
 options, args = parser.parse_args()
 
 try:
     assert options.app is not None
     APP_NAME = options.app
+    assert options.timeout is not None
+    TIMEOUT = options.timeout
 except:
     print "toppu - Top-like command line performance monitoring for Heroku"
     print "https://github.com/grobertson/toppu"
     print
-    print "Usage: toppu [appname]"
+    print "Usage: toppu -a <appname> [-t <timeout in ms>]"
     exit()
 
 
@@ -114,7 +121,7 @@ for line in run_heroku(APP_NAME):
              else:
                  service = re.search('([\d]+)ms', new_data['service'])
                  service_time = int(service.group(1))
-                 if service_time < 2000:
+                 if service_time < TIMEOUT:
                      stdscr.addstr(line_number,1, new_data['dyno'] + "\t\t" + new_data['connect'] + "\t\t" + new_data['service'] + "\t\t" + new_data['status'], curses.color_pair(3))
                  else:
                      stdscr.addstr(line_number,1, new_data['dyno'] + "\t\t" + new_data['connect'] + "\t\t" + new_data['service'] + "\t\t" + new_data['status'], curses.color_pair(2))
