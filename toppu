@@ -119,7 +119,7 @@ try:
                 # if we can't figure out the dyno, just carry on with the next line
                 continue
             line_number = int(re.search('\.([\d]+)', dyno).group(1))
-            stdscr.addstr(0,1,"Dyno\t\tService\t\tConnect\t\tStatus", curses.A_REVERSE)
+            stdscr.addstr(0,1,"Dyno\t\tConnect\t\tService\t\tStatus", curses.A_REVERSE)
             if new_data['status'] == "503":
                 stdscr.addstr(line_number,1, dyno + "\t\t" + new_data['connect'] + "\t\t" + new_data['service'] + "\t\t" + new_data['status'], curses.color_pair(1))
             else:
