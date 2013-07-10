@@ -38,6 +38,9 @@ curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
 curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
 curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLACK)
 curses.init_pair(4, curses.COLOR_BLUE, curses.COLOR_BLACK)
+
+parse_errors = []
+
 def parse_line(line):
     line = clean_logline(line)
     line_halves = re.split('\]\: ', line)
@@ -59,7 +62,7 @@ def parse_line(line):
             second_int = int(parsed_time.group(6))
             parsed_data['log_time'] = datetime.datetime(year_int, month_int, day_int, hour_int, minute_int, second_int)
         except: 
-            print line
+            parse_errors.append(line)
             return False
     else:
         return False
@@ -83,7 +86,7 @@ def parse_line(line):
     else:
         # app (i.e. app[instance] or (async job output) app.*.*[guid] lines would need specific parsing and you'd do that somewhere around here. 
         return False
-                        
+
     return parsed_data
 
 
@@ -103,29 +106,38 @@ def clean_logline(line):
 
 
 #main loop
-for line in run_heroku(APP_NAME):
-     new_data =  parse_line(line)
-     if not new_data:
-         pass
-     else:
-         if new_data['log_type'] == 'web':
-             #print new_data
-             pass
-         elif new_data['log_type'] == 'worker':
-             pass
-         elif new_data['log_type'] == 'router':
-             line_number = int(re.search('\.([\d]+)', new_data['dyno']).group(1))
-             stdscr.addstr(0,1,"Dyno\t\tService\t\tConnect\t\tStatus", curses.A_REVERSE)
-             if new_data['status'] == "503":
-                 stdscr.addstr(line_number,1, new_data['dyno'] + "\t\t" + new_data['connect'] + "\t\t" + new_data['service'] + "\t\t" + new_data['status'], curses.color_pair(1))
-             else:
-                 service = re.search('([\d]+)ms', new_data['service'])
-                 service_time = int(service.group(1))
-                 if service_time < TIMEOUT:
-                     stdscr.addstr(line_number,1, new_data['dyno'] + "\t\t" + new_data['connect'] + "\t\t" + new_data['service'] + "\t\t" + new_data['status'], curses.color_pair(3))
-                 else:
-                     stdscr.addstr(line_number,1, new_data['dyno'] + "\t\t" + new_data['connect'] + "\t\t" + new_data['service'] + "\t\t" + new_data['status'], curses.color_pair(2))
-                     
-             stdscr.refresh()
-         pass
-    
+try:
+    for line in run_heroku(APP_NAME):
+        new_data =  parse_line(line)
+        if not new_data:
+            continue
+
+        if new_data['log_type'] == 'router':
+            try:
+                dyno = new_data['dyno']
+            except KeyError:
+                # if we can't figure out the dyno, just carry on with the next line
+                continue
+            line_number = int(re.search('\.([\d]+)', dyno).group(1))
+            stdscr.addstr(0,1,"Dyno\t\tConnect\t\tService\t\tStatus", curses.A_REVERSE)
+            if new_data['status'] == "503":
+                stdscr.addstr(line_number,1, dyno + "\t\t" + new_data['connect'] + "\t\t" + new_data['service'] + "\t\t" + new_data['status'], curses.color_pair(1))
+            else:
+                service = re.search('([\d]+)ms', new_data['service'])
+                service_time = int(service.group(1))
+                if service_time < TIMEOUT:
+                    stdscr.addstr(line_number,1, dyno + "\t\t" + new_data['connect'] + "\t\t" + new_data['service'] + "\t\t" + new_data['status'], curses.color_pair(3))
+                else:
+                    stdscr.addstr(line_number,1, dyno + "\t\t" + new_data['connect'] + "\t\t" + new_data['service'] + "\t\t" + new_data['status'], curses.color_pair(2))
+
+            stdscr.refresh()
+        elif new_data['log_type'] == 'web':
+            continue
+        elif new_data['log_type'] == 'worker':
+            continue
+
+except KeyboardInterrupt:
+    curses.endwin()
+    print >> sys.stderr, "\n\nUnparseable log lines:\n"
+    for err in parse_errors:
+        print >> sys.stderr, "{err}\n".format(err=err)
