@@ -1,30 +1,35 @@
 #!/usr/bin/python
+"""
+toppu - a small top-like utility for monitoring Heroku dyno response times
+"""
 
-import sys, string, os
-from time import strptime
-import re, shlex, subprocess, datetime
 import curses
-
+import datetime
 import optparse
-parser = optparse.OptionParser()
+import re
+import shlex
+import subprocess
+import sys
+
+PARSER = optparse.OptionParser()
 
 # handle app declaration
-parser.add_option('-a', action="store", dest="app")
-parser.add_option('--app', action="store", dest="app")
+PARSER.add_option('-a', action="store", dest="app")
+PARSER.add_option('--app', action="store", dest="app")
 
-# handle app declaration
-parser.add_option('-t', action="store", dest="timeout", type="int")
-parser.add_option('--timeout', action="store", dest="timeout", type="int")
-parser.set_defaults(timeout=2000)
+# handle timeout declaration
+PARSER.add_option('-t', action="store", dest="timeout", type="int")
+PARSER.add_option('--timeout', action="store", dest="timeout", type="int")
+PARSER.set_defaults(timeout=2000)
 
-options, args = parser.parse_args()
+OPTIONS, ARGS = PARSER.parse_args()
 
 try:
-    assert options.app is not None
-    APP_NAME = options.app
-    assert options.timeout is not None
-    TIMEOUT = options.timeout
-except:
+    assert OPTIONS.app is not None
+    APP_NAME = OPTIONS.app
+    assert OPTIONS.timeout is not None
+    TIMEOUT = OPTIONS.timeout
+except AssertionError:
     print "toppu - Top-like command line performance monitoring for Heroku"
     print "https://github.com/grobertson/toppu"
     print
@@ -32,16 +37,18 @@ except:
     exit()
 
 
-stdscr = curses.initscr()
+STDSCR = curses.initscr()
 curses.start_color()
 curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
 curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
 curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLACK)
 curses.init_pair(4, curses.COLOR_BLUE, curses.COLOR_BLACK)
 
-parse_errors = []
+PARSE_ERRORS = []
 
 def parse_line(line):
+    """Tries to intellingently parse a single Heroku logline"""
+
     line = clean_logline(line)
     line_halves = re.split('\]\: ', line)
     line_meta = re.split(' ', line_halves[0])
@@ -53,20 +60,23 @@ def parse_line(line):
             parsed_type = re.search('^([a-zA-Z]+)\[([a-zA-Z]+)', line_meta[1])
             parsed_data['log_source'] = parsed_type.group(1)
             parsed_data['log_type'] = parsed_type.group(2)
-            parsed_time = re.match('([\d][\d][\d][\d])\-([\d][\d])\-([\d][\d])T([\d][\d])\:([\d][\d])\:([\d][\d])', parsed_data['timestamp'])
+            parsed_time = re.match(
+                '([\d][\d][\d][\d])\-([\d][\d])\-([\d][\d])T([\d][\d])\:([\d][\d])\:([\d][\d])',
+                parsed_data['timestamp'])
             year_int = int(parsed_time.group(1))
             month_int = int(parsed_time.group(2))
             day_int = int(parsed_time.group(3))
             hour_int = int(parsed_time.group(4))
             minute_int = int(parsed_time.group(5))
             second_int = int(parsed_time.group(6))
-            parsed_data['log_time'] = datetime.datetime(year_int, month_int, day_int, hour_int, minute_int, second_int)
-        except: 
-            parse_errors.append(line)
+            parsed_data['log_time'] = datetime.datetime(
+                year_int, month_int, day_int, hour_int, minute_int, second_int)
+        except AttributeError:
+            PARSE_ERRORS.append(line)
             return False
     else:
         return False
-    
+
     if parsed_data['log_source'] == "heroku":
         if line_halves.__len__() > 1:
             line_halves[1] = re.sub(', ', ',', line_halves[1])
@@ -78,19 +88,21 @@ def parse_line(line):
                     pass
                 elif line_chunks.__len__() > 1:
                     parsed_data[line_chunks[0]] = line_chunks[1]
-                    pass
                 else:
                     pass
         else:
             return False
     else:
-        # app (i.e. app[instance] or (async job output) app.*.*[guid] lines would need specific parsing and you'd do that somewhere around here. 
+        # app (i.e. app[instance] or (async job output) app.*.*[guid] lines
+        # would need specific parsing and you'd do that somewhere around here
         return False
 
     return parsed_data
 
 
 def run_heroku(app_name):
+    """Runs the `heroku logs` command with the appropriate app name"""
+
     command = '/usr/bin/heroku logs -t --app ' + app_name
     args = shlex.split(command)
     heroku = subprocess.Popen(args,
@@ -104,52 +116,70 @@ def clean_logline(line):
     return line
 
 def make_line(dyno, connect, service, status, **extra):
+    """Constructs log lines for curses output"""
     return "{dyno}\t\t{connect}\t\t{service}\t\t{status}".format(
         dyno=dyno,
         connect=connect,
         service=service,
-        status=status
+        status=status,
     )
 
-#main loop
-try:
-    for line in run_heroku(APP_NAME):
-        new_data =  parse_line(line)
-        if not new_data:
-            continue
+def add_line(line_number, data, color):
+    """Adds a line of text to and refreshes the curses terminal"""
+    STDSCR.addstr(line_number, 1, make_line(**data), curses.color_pair(color))
+    STDSCR.refresh()
 
-        if new_data['log_type'] == 'router':
-            try:
-                assert new_data['dyno']
-                assert new_data['connect']
-                assert new_data['service']
-                assert new_data['status']
-            except KeyError:
-                # if we can't figure out the dyno, just carry on with the next line
+
+def main():
+    """Main run loop of toppu"""
+    STDSCR.addstr(0, 1, "Dyno\t\tConnect\t\tService\t\tStatus", curses.A_REVERSE)
+
+    try:
+
+        for line in run_heroku(APP_NAME):
+            data =  parse_line(line)
+            if not data:
                 continue
-            line_number = int(re.search('\.([\d]+)', new_data['dyno']).group(1))
-            stdscr.addstr(0, 1, "Dyno\t\tConnect\t\tService\t\tStatus", curses.A_REVERSE)
-            if new_data['status'] == "503":
-                stdscr.addstr(line_number, 1, make_line(**new_data), curses.color_pair(1))
-            else:
-                service = re.search('([\d]+)ms', new_data['service'])
+
+            if data['log_type'] == 'router':
+                try:
+                    assert data['dyno']
+                    assert data['connect']
+                    assert data['service']
+                    assert data['status']
+                except KeyError:
+                    # continue to the next line if necessary data isn't present
+                    continue
+
+                # data present, keep moving
+                line_number = int(re.search('\.([\d]+)', data['dyno']).group(1))
+                if data['status'] == "503":
+                    add_line(line_number, data, 1)
+                    continue
+
+                # not a 503, see if this exceeds the timeout
+                service = re.search('([\d]+)ms', data['service'])
                 service_time = int(service.group(1))
                 if service_time < TIMEOUT:
-                    stdscr.addstr(line_number, 1, make_line(**new_data), curses.color_pair(3))
+                    color = 3
                 else:
-                    stdscr.addstr(line_number, 1, make_line(**new_data), curses.color_pair(2))
+                    color = 2
 
-            stdscr.refresh()
-        elif new_data['log_type'] == 'web':
-            continue
-        elif new_data['log_type'] == 'worker':
-            continue
+                add_line(line_number, data, color)
 
-except KeyboardInterrupt:
-    curses.endwin()
-    print >> sys.stderr, "\n\nUnparseable log lines:\n"
-    for err in parse_errors:
-        print >> sys.stderr, "{err}".format(err=err)
-except Exception as ex:
-    curses.endwin()
-    raise
+            elif data['log_type'] == 'web':
+                continue
+            elif data['log_type'] == 'worker':
+                continue
+
+    except KeyboardInterrupt:
+        curses.endwin()
+        print >> sys.stderr, "\nUnparseable log lines:\n"
+        for err in PARSE_ERRORS:
+            print >> sys.stderr, "{err}".format(err=err)
+    except Exception:
+        curses.endwin()
+        raise
+
+if __name__ == "__main__":
+    main()
