@@ -103,7 +103,13 @@ def clean_logline(line):
     line = re.sub('\n', '', line)
     return line
 
-
+def make_line(dyno, connect, service, status, **extra):
+    return "{dyno}\t\t{connect}\t\t{service}\t\t{status}".format(
+        dyno=dyno,
+        connect=connect,
+        service=service,
+        status=status
+    )
 
 #main loop
 try:
@@ -114,21 +120,24 @@ try:
 
         if new_data['log_type'] == 'router':
             try:
-                dyno = new_data['dyno']
+                assert new_data['dyno']
+                assert new_data['connect']
+                assert new_data['service']
+                assert new_data['status']
             except KeyError:
                 # if we can't figure out the dyno, just carry on with the next line
                 continue
-            line_number = int(re.search('\.([\d]+)', dyno).group(1))
-            stdscr.addstr(0,1,"Dyno\t\tConnect\t\tService\t\tStatus", curses.A_REVERSE)
+            line_number = int(re.search('\.([\d]+)', new_data['dyno']).group(1))
+            stdscr.addstr(0, 1, "Dyno\t\tConnect\t\tService\t\tStatus", curses.A_REVERSE)
             if new_data['status'] == "503":
-                stdscr.addstr(line_number,1, dyno + "\t\t" + new_data['connect'] + "\t\t" + new_data['service'] + "\t\t" + new_data['status'], curses.color_pair(1))
+                stdscr.addstr(line_number, 1, make_line(**new_data), curses.color_pair(1))
             else:
                 service = re.search('([\d]+)ms', new_data['service'])
                 service_time = int(service.group(1))
                 if service_time < TIMEOUT:
-                    stdscr.addstr(line_number,1, dyno + "\t\t" + new_data['connect'] + "\t\t" + new_data['service'] + "\t\t" + new_data['status'], curses.color_pair(3))
+                    stdscr.addstr(line_number, 1, make_line(**new_data), curses.color_pair(3))
                 else:
-                    stdscr.addstr(line_number,1, dyno + "\t\t" + new_data['connect'] + "\t\t" + new_data['service'] + "\t\t" + new_data['status'], curses.color_pair(2))
+                    stdscr.addstr(line_number, 1, make_line(**new_data), curses.color_pair(2))
 
             stdscr.refresh()
         elif new_data['log_type'] == 'web':
@@ -140,4 +149,7 @@ except KeyboardInterrupt:
     curses.endwin()
     print >> sys.stderr, "\n\nUnparseable log lines:\n"
     for err in parse_errors:
-        print >> sys.stderr, "{err}\n".format(err=err)
+        print >> sys.stderr, "{err}".format(err=err)
+except Exception as ex:
+    curses.endwin()
+    raise
