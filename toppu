@@ -10,6 +10,7 @@ import re
 import shlex
 import subprocess
 import sys
+from Controls import Gauge, Heading
 
 PARSER = optparse.OptionParser()
 
@@ -45,7 +46,7 @@ class Toppu(object):
         self.stream = LogStream(APP_NAME)
         self.logparser = LogParser()
         self.display = Display()
-        
+        self.dynos = {}
         try:
             self.run()
         except KeyboardInterrupt:
@@ -75,20 +76,26 @@ class Toppu(object):
                     continue
 
                 # data present, keep moving
-                line_number = int(re.search('\.([\d]+)', data['dyno']).group(1))
-                if data['status'] == "503":
-                    self.display.writeln(line_number, data, 1)
-                    continue
-
-                # not a 503, see if this exceeds the timeout
-                service = re.search('([\d]+)ms', data['service'])
-                service_time = int(service.group(1))
-                if service_time < TIMEOUT:
-                    color = 3
+                (d_type, d_number) = data['dyno'].split('.')
+                #We build an array of dicts representing each dyno we've seen so far.
+                #If our dict already exists, the Controls.Gauge has been created, so we just update
+                if self.dynos.__contains__(data['dyno']):
+                    self.dynos[data['dyno']]['dyno'].update(data['dyno'])
+                    self.dynos[data['dyno']]['connect'].update(int(data['connect'].replace('ms','')))
+                    self.dynos[data['dyno']]['service'].update(int(data['service'].replace('ms','')))
+                    self.dynos[data['dyno']]['status'].update(data['status'])
                 else:
-                    color = 2
+                    #if the dict didn't exist, add it and make a new Controls.Gauge 
+                    self.dynos[data['dyno']] = {}
+                    self.dynos[data['dyno']]['dyno'] = Gauge(self.display.STDSCR, self.display.rowrange[int(d_number)], self.display.colrange[0], data['dyno'])
+                    self.dynos[data['dyno']]['connect'] = Gauge(self.display.STDSCR, self.display.rowrange[int(d_number)], self.display.colrange[2], int(data['connect'].replace('ms','')), units='ms')
+                    self.dynos[data['dyno']]['service'] = Gauge(self.display.STDSCR, self.display.rowrange[int(d_number)], self.display.colrange[4], int(data['service'].replace('ms','')), units='ms')
+                    self.dynos[data['dyno']]['status'] = Gauge(self.display.STDSCR, self.display.rowrange[int(d_number)], self.display.colrange[6], data['status'])
+                    self.dynos[data['dyno']]['dyno'].draw()
+                    self.dynos[data['dyno']]['connect'].draw()
+                    self.dynos[data['dyno']]['service'].draw()
+                    self.dynos[data['dyno']]['status'].draw()
 
-                self.display.writeln(line_number, data, color)
 
             elif data['log_type'] == 'web':
                 continue
@@ -176,39 +183,52 @@ class LogParser(object):
 
 
 class Display(object):
-    
+    ''' Big thanks to https://github.com/mooseman/pd_curses_stuff/ '''
     def __init__(self):
         self.STDSCR = curses.initscr()
-        self.STDSCR.keypad(1)
         curses.noecho()
         curses.cbreak()
+        self.STDSCR.keypad(1)
+        self.STDSCR.scrollok(1)
+        self.STDSCR.idlok(1)      
+        self.STDSCR.leaveok(0)
         curses.start_color()
-        curses.init_pair(1, curses.COLOR_RED, curses.COLOR_BLACK)
+        curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLACK)
         curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
-        curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLACK)
-        curses.init_pair(4, curses.COLOR_BLUE, curses.COLOR_BLACK)
-        self.STDSCR.addstr(0, 1, "Dyno\t\tConnect\t\tService\t\tStatus", curses.A_REVERSE)
+        curses.init_pair(3, curses.COLOR_BLUE, curses.COLOR_BLACK)
+        curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        
+        # The boundaries of the screen 
+        (y, x) = self.STDSCR.getmaxyx() 
+        self.maxrows = y  
+        self.maxcols = x
+        
+        #scroll port
+        #self.STDSCR.setscrreg(6, self.maxrows-2)
+        
+        #every row is a display row.
+        self.rowrange = list(range(6, self.maxrows-2))  
+
+        columns = 8
+        # leading spaces, width of screen, width of a column ( 2 * offset = space on center)
+        self.colrange = list(range( 1 , self.maxcols, self.maxcols / (columns * 2) ) ) 
+
+        self.colheadposlist = list( (y,x) 
+            for y in range(5, 6) 
+                for x in self.colrange )
+                        
+        # Draw the headings 
+        self.coldata = [" Dyno ", '', " Connect ", '', " Service ", ''," Status ", '']
+        self.ch = Heading(self.colheadposlist, self.coldata)  
+        for label, pos in zip(self.coldata, self.colheadposlist):
+            self.STDSCR.addstr(pos[0], pos[1], label, curses.A_REVERSE)
         return None
 
-    def __del__(self, type, value, traceback):
+    def __del__(self):
         curses.nocbreak()
         stdscr.keypad(0)
         curses.echo()
         curses.endwin()
-
-    def format(self, dyno, connect, service, status, **extra):
-        """Constructs log lines for curses output"""
-        return "{dyno}\t\t{connect}\t\t{service}\t\t{status}".format(
-            dyno=dyno,
-            connect=connect,
-            service=service,
-            status=status,
-        )
-
-    def writeln(self, line_number, data, color):
-        """Adds a line of text to and refreshes the curses terminal"""
-        self.STDSCR.addstr(line_number, 1, self.format(**data), curses.color_pair(color))
-        self.STDSCR.refresh()
 
 
 if __name__ == "__main__":
