@@ -11,7 +11,7 @@ import re
 import shlex
 import subprocess
 import sys
-from Controls import Gauge, HttpStatusGauge, Heading
+from Controls import Gauge, HttpStatusGauge, MinMaxGauge, Heading
 
 banner = "\ntoppu - A top-like tool for Heroku: https://github.com/grobertson/toppu"
 usage = "toppu -a <appname> [--solarized]" 
@@ -109,21 +109,19 @@ class Toppu(object):
                                                                 self.display.colrange[0], 
                                                                 data['dyno'])
                     
-                    self.dynos[data['dyno']]['connect'] = Gauge(self.display.STDSCR, 
+                    self.dynos[data['dyno']]['connect'] = MinMaxGauge(self.display.STDSCR, 
                                                                 self.display.rowrange[int(d_number)], 
                                                                 self.display.colrange[1], 
                                                                 int(data['connect'].replace('ms','')), 
-                                                                units='ms',
-                                                                highlight_minmax=True)
+                                                                units='ms')
                     
-                    self.dynos[data['dyno']]['service'] = Gauge(self.display.STDSCR, 
+                    self.dynos[data['dyno']]['service'] = MinMaxGauge(self.display.STDSCR, 
                                                                 self.display.rowrange[int(d_number)], 
                                                                 self.display.colrange[2], 
                                                                 int(data['service'].replace('ms','')), 
-                                                                units='ms',
-                                                                highlight_minmax=True)
+                                                                units='ms')
                     
-                    self.dynos[data['dyno']]['status'] = Gauge( self.display.STDSCR, 
+                    self.dynos[data['dyno']]['status'] = HttpStatusGauge( self.display.STDSCR, 
                                                                 self.display.rowrange[int(d_number)], 
                                                                 self.display.colrange[3], 
                                                                 data['status'])

@@ -12,14 +12,13 @@ class Gauge(object):
         
     '''
     _normal = 7
-    _high = 4
-    _low = 3
-    _good = 7
+    _high = 1
+    _low = 6
+    _good = 2
     
     def __init__(   self, scr, ypos, xpos, val, 
                     units=None, label=None, color=7, 
-                    bold=False, bg=curses.COLOR_BLACK, 
-                    highlight_minmax=False): 
+                    bold=False, bg=curses.COLOR_BLACK): 
         #Initialize
         self._scr = scr
         self._ypos = ypos
@@ -31,7 +30,6 @@ class Gauge(object):
         self._color = color
         self._bold = bold
         self._bg = bg
-        self._highlightMinMax = highlight_minmax
         self._history = []
         
         self.label = label
@@ -39,25 +37,7 @@ class Gauge(object):
         
     def update(self, val):
         self.val = val    
-        color = self._normal
-        
-        if self._highlightMinMax:
-            if val > self._max:
-                self._max = val
-                color = self._high
-            
-            if val == self._max:
-                color = self._high
-                
-        if self._highlightMinMax:
-            if val < self._min:
-                self._min = val
-                color = self._low
-            
-            if val == self._min:
-                color = self._low
-
-        self.draw(color)
+        self.draw()
  
     def draw(self, color=None): 
         if color:
@@ -175,32 +155,50 @@ class Gauge(object):
     def bold(self, val):
         self._bold = val
 
+class MinMaxGauge(Gauge):
+
+    def update(self, val):
+        self.val = val    
+        color = self._normal
+    
+        if val > self._max:
+            self._max = val
+            color = self._high
+        
+        if val == self._max:
+            color = self._high
+            
+        if val < self._min:
+            self._min = val
+            color = self._low
+        
+        if val == self._min:
+            color = self._low
+
+        self.draw(color)
+
 
 class HttpStatusGauge(Gauge):
 
-    @property
-    def val(self):
-        return self._val
+    def update(self, val):
+        self.val = val    
+        color = self._normal
     
-    @val.setter
-    def val(self, val):
-        self._val = val
         if int(val) in range(500,599):
             self._max = val
-            self.color = self._high
+            color = self._high
         elif int(val) in range(400,499):
             self._min = val
-            self.color = self._low
+            color = self._low
         elif int(val) in range(300,399):
             self._min = val
-            self.color = self._low
+            color = self._good
         elif int(val) == 200: 
-            self.color = self._normal
+            color = self._normal
         else:
-            self.color = self._good
-         
-        self._val_text = str(val)
-        self._lastUpdate = datetime.now()
+            color = self._high
+
+        self.draw(color)
     
       
 class Heading(object): 
