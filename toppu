@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# coding=utf-8
 """
 toppu - a small top-like utility for monitoring Heroku dyno response times
 """
@@ -10,38 +11,54 @@ import re
 import shlex
 import subprocess
 import sys
-from Controls import Gauge, Heading
+from Controls import Gauge, HttpStatusGauge, Heading
 
-PARSER = optparse.OptionParser()
+banner = "\ntoppu - A top-like tool for Heroku: https://github.com/grobertson/toppu"
+usage = "toppu -a <appname> [--solarized]" 
 
-# handle app declaration
-PARSER.add_option('-a', action="store", dest="app")
-PARSER.add_option('--app', action="store", dest="app")
+PARSER = optparse.OptionParser(usage=''.join([usage,banner]))
 
-# handle timeout declaration
-PARSER.add_option('-t', action="store", dest="timeout", type="int")
-PARSER.add_option('--timeout', action="store", dest="timeout", type="int")
-PARSER.set_defaults(timeout=2000)
+# app name
+PARSER.add_option('-a', action="store", dest="app", help="heroku app name")
+PARSER.add_option('--app', action="store", dest="app", help="heroku app name")
 
+# for tinkering
+PARSER.add_option('--devel', action="store_true", dest="debug", help="for tinkering with the parser.")
+
+# timeout declaration, unused after refactor,
+#TODO: thresholds
+#PARSER.add_option('-t', action="store", dest="timeout", type="int", help="timeout in milliseconds.")
+#PARSER.add_option('--timeout', action="store", dest="timeout", type="int", help="timeout in milliseconds.")
+#PARSER.set_defaults(timeout=2000)
+
+PARSER.add_option('--solarized', action="store_true", dest="solarized", help="easy on the eyes.")
+PARSER.set_defaults(solarized=False)
 OPTIONS, ARGS = PARSER.parse_args()
+
 
 try:
     assert OPTIONS.app is not None
     APP_NAME = OPTIONS.app
-    assert OPTIONS.timeout is not None
-    TIMEOUT = OPTIONS.timeout
+    #assert OPTIONS.timeout is not None
+    #TIMEOUT = OPTIONS.timeout
+    TIMEOUT = 0
+    assert OPTIONS.solarized is not None
+    SOLARIZED = OPTIONS.solarized
 except AssertionError:
-    print "toppu - Top-like command line performance monitoring for Heroku"
-    print "https://github.com/grobertson/toppu"
-    print
-    print "Usage: toppu -a <appname> [-t <timeout in ms>]"
+    PARSER.error("No appname specified.")
     exit()
 
 
 PARSE_ERRORS = []
 
 class Toppu(object):
-    ''' This is for my programmers that was down with the cli since day one.'''
+    ''' 
+        This dedicated to my engineers that was down from day one.
+        Welcome to the cli 
+            ...like we always do about this time.
+        
+        Apologies to Dr. Dre
+    '''
     def __init__(self):
         self.stream = LogStream(APP_NAME)
         self.logparser = LogParser()
@@ -87,10 +104,29 @@ class Toppu(object):
                 else:
                     #if the dict didn't exist, add it and make a new Controls.Gauge 
                     self.dynos[data['dyno']] = {}
-                    self.dynos[data['dyno']]['dyno'] = Gauge(self.display.STDSCR, self.display.rowrange[int(d_number)], self.display.colrange[0], data['dyno'])
-                    self.dynos[data['dyno']]['connect'] = Gauge(self.display.STDSCR, self.display.rowrange[int(d_number)], self.display.colrange[2], int(data['connect'].replace('ms','')), units='ms')
-                    self.dynos[data['dyno']]['service'] = Gauge(self.display.STDSCR, self.display.rowrange[int(d_number)], self.display.colrange[4], int(data['service'].replace('ms','')), units='ms')
-                    self.dynos[data['dyno']]['status'] = Gauge(self.display.STDSCR, self.display.rowrange[int(d_number)], self.display.colrange[6], data['status'])
+                    self.dynos[data['dyno']]['dyno'] = Gauge(   self.display.STDSCR, 
+                                                                self.display.rowrange[int(d_number)], 
+                                                                self.display.colrange[0], 
+                                                                data['dyno'])
+                    
+                    self.dynos[data['dyno']]['connect'] = Gauge(self.display.STDSCR, 
+                                                                self.display.rowrange[int(d_number)], 
+                                                                self.display.colrange[1], 
+                                                                int(data['connect'].replace('ms','')), 
+                                                                units='ms',
+                                                                highlight_minmax=True)
+                    
+                    self.dynos[data['dyno']]['service'] = Gauge(self.display.STDSCR, 
+                                                                self.display.rowrange[int(d_number)], 
+                                                                self.display.colrange[2], 
+                                                                int(data['service'].replace('ms','')), 
+                                                                units='ms',
+                                                                highlight_minmax=True)
+                    
+                    self.dynos[data['dyno']]['status'] = Gauge( self.display.STDSCR, 
+                                                                self.display.rowrange[int(d_number)], 
+                                                                self.display.colrange[3], 
+                                                                data['status'])
                     self.dynos[data['dyno']]['dyno'].draw()
                     self.dynos[data['dyno']]['connect'].draw()
                     self.dynos[data['dyno']]['service'].draw()
@@ -101,7 +137,11 @@ class Toppu(object):
                 continue
             elif data['log_type'] == 'worker':
                 continue
-
+        
+            c = self.display.STDSCR.getch()
+            if not c == -1:
+                if c == ord('q'):
+                    exit()
         
         
 class LogStream(object):
@@ -130,7 +170,7 @@ class LogParser(object):
         return None
 
     def parse(self, line):
-        """Tries to intellingently parse a single Heroku logline"""
+        """Tries to parse a single Heroku logline"""
         line = re.sub('\n', '', line)
         line_halves = re.split('\]\: ', line)
         line_meta = re.split(' ', line_halves[0])
@@ -186,17 +226,16 @@ class Display(object):
     ''' Big thanks to https://github.com/mooseman/pd_curses_stuff/ '''
     def __init__(self):
         self.STDSCR = curses.initscr()
+        curses.start_color()
         curses.noecho()
         curses.cbreak()
+        self.STDSCR.nodelay(1)
         self.STDSCR.keypad(1)
         self.STDSCR.scrollok(1)
         self.STDSCR.idlok(1)      
         self.STDSCR.leaveok(0)
-        curses.start_color()
-        curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLACK)
-        curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
-        curses.init_pair(3, curses.COLOR_BLUE, curses.COLOR_BLACK)
-        curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        
+        self.palette()
         
         # The boundaries of the screen 
         (y, x) = self.STDSCR.getmaxyx() 
@@ -207,29 +246,42 @@ class Display(object):
         #self.STDSCR.setscrreg(6, self.maxrows-2)
         
         #every row is a display row.
-        self.rowrange = list(range(6, self.maxrows-2))  
+        self.rowrange = list(range(5, self.maxrows-2))  
 
-        columns = 8
-        # leading spaces, width of screen, width of a column ( 2 * offset = space on center)
-        self.colrange = list(range( 1 , self.maxcols, self.maxcols / (columns * 2) ) ) 
+        columns = 4
+        # leading spaces, width of screen, width of a column
+        self.colrange = list(range( 1 , self.maxcols, self.maxcols / columns ) ) 
 
         self.colheadposlist = list( (y,x) 
             for y in range(5, 6) 
                 for x in self.colrange )
                         
-        # Draw the headings 
-        self.coldata = [" Dyno ", '', " Connect ", '', " Service ", ''," Status ", '']
-        self.ch = Heading(self.colheadposlist, self.coldata)  
+        # Draw the headings
+        bar = ""
+        for i in range(1, self.maxcols):
+            bar = bar + " "
+        self.STDSCR.addstr(5, 1, bar, curses.A_REVERSE) 
+        self.coldata = ["Dyno", "Connect", "Service","Status"]
+        self.ch = Heading(self.colheadposlist, self.coldata, column_padding=4)  
         for label, pos in zip(self.coldata, self.colheadposlist):
             self.STDSCR.addstr(pos[0], pos[1], label, curses.A_REVERSE)
+        self.STDSCR.refresh()
         return None
 
     def __del__(self):
         curses.nocbreak()
-        stdscr.keypad(0)
+        self.STDSCR1.keypad(0)
         curses.echo()
         curses.endwin()
 
+    def palette(self):
+        for col in range(1,255):
+            curses.init_pair(col, col, 0)
+            #pass
+        #curses.init_pair(7, 7, 0)
+        #curses.init_pair(3, 3, 0)
+        #curses.init_pair(4, 4, 0)
+        
 
 if __name__ == "__main__":
     t = Toppu()

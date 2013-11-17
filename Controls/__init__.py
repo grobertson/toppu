@@ -1,5 +1,6 @@
 import curses
 from datetime import datetime
+import pdb
 
 class Gauge(object): 
     ''' 
@@ -10,52 +11,72 @@ class Gauge(object):
         Major hat tip to https://github.com/mooseman/pd_curses_stuff/ 
         
     '''
-    _ypos = None
-    _xpos = None
-    _val = None
-    _val_text = None
-    _label = None
-    _units = None
-    _color = None
-    _bg = None
-    _bold = None
-    _hasDrawn = False
-    _lastUpdate = None
-    _max = 0
-    _min = 0
-    
-    _normal = 1
-    _high = 2
+    _normal = 7
+    _high = 4
     _low = 3
-    _good = 4
+    _good = 7
     
-    def __init__(self, scr, ypos, xpos, val, units=None, label=None, color=curses.COLOR_WHITE, bold=False, bg=curses.COLOR_BLACK): 
+    def __init__(   self, scr, ypos, xpos, val, 
+                    units=None, label=None, color=7, 
+                    bold=False, bg=curses.COLOR_BLACK, 
+                    highlight_minmax=False): 
         #Initialize
         self._scr = scr
-        self.ypos = ypos
-        self.xpos = xpos     
-        self.val = val
+        self._ypos = ypos
+        self._xpos = xpos     
+        self._val = val
+        self._val_text = str(val)
+        self._min = val
+        self._max = val
+        self._color = color
+        self._bold = bold
+        self._bg = bg
+        self._highlightMinMax = highlight_minmax
+        self._history = []
+        
         self.label = label
-        self.color = color
-        self.bold = bold
-        self.bg = bg
         self.units = units
-
-    def update(self, val): 
+        
+    def update(self, val):
         self.val = val    
-        if self._hasDrawn:
-            self.draw()
+        color = self._normal
+        
+        if self._highlightMinMax:
+            if val > self._max:
+                self._max = val
+                color = self._high
+            
+            if val == self._max:
+                color = self._high
+                
+        if self._highlightMinMax:
+            if val < self._min:
+                self._min = val
+                color = self._low
+            
+            if val == self._min:
+                color = self._low
+
+        self.draw(color)
+ 
+    def draw(self, color=None): 
+        if color:
+            self._scr.addstr(self.ypos, self.xpos, self.content, curses.color_pair(color))
+            pass
         else:
-            pass 
-    
-    def draw(self): 
-        self._scr.addstr(self.ypos, self.xpos, self.content, self.color)
-        self.refresh()
-    
+            self._scr.addstr(self.ypos, self.xpos, self.content, curses.color_pair(self.color))
+        self._scr.refresh()
+        
     def refresh(self):
         self._scr.refresh()
         self._hasDrawn = True   
-        
+ 
+    def add_history(self, val):
+        self._history.insert(0, val)
+    
+    def get_history(self):
+        return self._history
+    
     ''' Properties '''
     
     @property
@@ -64,7 +85,6 @@ class Gauge(object):
         for i in range(c.__len__(), 10):
             c = " " + c
         return c
-        
 
     @property
     def xpos(self):
@@ -96,17 +116,8 @@ class Gauge(object):
     
     @val.setter
     def val(self, val):
+        self.add_history(self._val)
         self._val = val
-        if val > self._max:
-            self._max = val
-            self.color = self._high
-        if val < self._min:
-            self._min = val
-            self.color = self._low
-        if not val == self._min: 
-            if not val == self._max:
-                self.color = self._normal
-         
         self._val_text = str(val)
         self._lastUpdate = datetime.now()
     
@@ -125,7 +136,7 @@ class Gauge(object):
             self._label_width = self._label.__len__()
         else: 
             self._label = ''
-            self._label_width = 0
+            self._label_width = self._label.__len__()
 
     @property
     def units(self):
@@ -146,7 +157,7 @@ class Gauge(object):
     
     @color.setter
     def color(self, val):
-        self._color = val
+        self._color = int(val)
 
     @property
     def bg(self):
@@ -164,8 +175,57 @@ class Gauge(object):
     def bold(self, val):
         self._bold = val
 
+
+class HttpStatusGauge(Gauge):
+
+    @property
+    def val(self):
+        return self._val
+    
+    @val.setter
+    def val(self, val):
+        self._val = val
+        if int(val) in range(500,599):
+            self._max = val
+            self.color = self._high
+        elif int(val) in range(400,499):
+            self._min = val
+            self.color = self._low
+        elif int(val) in range(300,399):
+            self._min = val
+            self.color = self._low
+        elif int(val) == 200: 
+            self.color = self._normal
+        else:
+            self.color = self._good
+         
+        self._val_text = str(val)
+        self._lastUpdate = datetime.now()
+    
       
 class Heading(object): 
-    def __init__(self, posrange, datalist):      
+    def __init__(self, posrange, datalist, column_padding=0):      
         self.posrange = posrange
         self.datalist = datalist
+
+
+class Box(object):
+    def __init__(self, scr, startx, starty, endx, endy):
+        self.STDSCR = scr
+        self.startx = startx
+        self.endx = endx
+        self.starty = starty
+        self.endy = endy
+        self.width = endx - startx
+        self.height = endy - starty
+        
+        top = ""
+        for i in range(startx, endx):
+            top = top + chr(205)
+        
+        self.top = top
+
+    def draw(self):
+        self.STDSCR.addstr(self.starty, self.startx, chr(205), 15)
+        self.STDSCR.addstr(self.endy - 2, self.startx, chr(205), 15)
+    
