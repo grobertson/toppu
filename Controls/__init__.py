@@ -18,7 +18,7 @@ class Gauge(object):
     
     def __init__(   self, scr, ypos, xpos, val, 
                     units=None, label=None, color=7, 
-                    bold=False, bg=curses.COLOR_BLACK): 
+                    bold=False, bg=curses.COLOR_BLACK, width=0, left=False): 
         #Initialize
         self._scr = scr
         self._ypos = ypos
@@ -30,7 +30,8 @@ class Gauge(object):
         self._color = color
         self._bold = bold
         self._bg = bg
-        self._history = []
+        self._width = width
+        self._left = left
         
         self.label = label
         self.units = units
@@ -51,19 +52,12 @@ class Gauge(object):
         self._scr.refresh()
         self._hasDrawn = True   
  
-    def add_history(self, val):
-        self._history.insert(0, val)
-    
-    def get_history(self):
-        return self._history
-    
     ''' Properties '''
     
     @property
     def content(self):
-        c = " ".join([self.label, self.val_text, self.units])
-        for i in range(c.__len__(), 10):
-            c = " " + c
+        data = [self.label, self.val_text, self.units, "    "]            
+        c = " ".join(data)                
         return c
 
     @property
@@ -96,7 +90,6 @@ class Gauge(object):
     
     @val.setter
     def val(self, val):
-        self.add_history(self._val)
         self._val = val
         self._val_text = str(val)
         self._lastUpdate = datetime.now()
@@ -116,7 +109,7 @@ class Gauge(object):
             self._label_width = self._label.__len__()
         else: 
             self._label = ''
-            self._label_width = self._label.__len__()
+            self._label_width = 0
 
     @property
     def units(self):
@@ -155,6 +148,44 @@ class Gauge(object):
     def bold(self, val):
         self._bold = val
 
+
+class HistoryGauge(Gauge):
+    _history = []
+    
+    @property
+    def val(self):
+        return self._val        
+
+    @val.setter
+    def val(self, val):
+        self.add_history(self._val)
+        self._val = val
+        self._val_text = str(val)
+        self._lastUpdate = datetime.now()
+
+    def add_history(self, val):
+        self._history.insert(0, val)
+        if self._history.__len__() > 50:
+            self._history.pop()
+    
+    def get_history(self):
+        return self._history
+
+    def max(self):
+        try:
+            val = max(self._history)
+        except (TypeError, ZeroDivisionError), e:
+            val = 0
+        return val        
+
+    def min(self):
+        try:
+            val = min(self._history)
+        except (TypeError, ZeroDivisionError), e:
+            val = None
+        return val
+
+
 class MinMaxGauge(Gauge):
 
     def update(self, val):
@@ -175,7 +206,57 @@ class MinMaxGauge(Gauge):
         if val == self._min:
             color = self._low
 
-        self.draw(color)
+        self.draw(color)    
+
+class MinGauge(HistoryGauge):
+    def dummy(self):
+        pass
+        
+class MaxGauge(HistoryGauge):    
+    def dummy(self):
+        pass
+    
+class ColorMinMaxGauge(HistoryGauge):
+
+    def update(self, val):
+        self.val = val    
+        color = self._normal
+    
+        if val > self.max():
+            color = self._high
+        
+        if val == self.max():
+            color = self._high
+            
+        if val < self.min():
+            color = self._low
+        
+        if val == self.min():
+            color = self._low
+
+        self.draw(color)    
+
+    
+
+        
+class AverageGauge(HistoryGauge):   
+
+    def avg(self):
+        try:
+            avg = sum(self._history) / self._history.__len__()
+        except (TypeError, ZeroDivisionError), e:
+            avg = None
+        return avg
+    
+    @property
+    def content(self):
+        if not self.avg():
+            c = " ".join([self.label, self.val_text, self.units])
+        else:
+            data = [self.label, self.val_text, self.units, "    "]            
+            c = " ".join(data)
+        return c
+
 
 
 class HttpStatusGauge(Gauge):
@@ -194,12 +275,56 @@ class HttpStatusGauge(Gauge):
             self._min = val
             color = self._good
         elif int(val) == 200: 
-            color = self._normal
+            color = self._good
         else:
             color = self._high
 
         self.draw(color)
+ 
+class Clock(object):
+    def __init__(self, scr, ypos, xpos): 
+        #Initialize
+        self._scr = scr
+        self._ypos = ypos
+        self._xpos = xpos     
+        self._val = datetime.now()
+        self._val_text = str(self._val)
+
+    def update(self):
+        self.val = datetime.now()    
+        self.draw()
     
+    def draw(self, color=None): 
+        self._scr.addstr(self.ypos, self.xpos, self._val_text, curses.color_pair(7))
+        self._scr.refresh()  
+ 
+    ''' Properties '''
+    @property
+    def xpos(self):
+        return self._xpos
+
+    @xpos.setter
+    def xpos(self, val):
+        self._xpos = val
+
+    @property
+    def val(self):
+        return self._val
+
+    @val.setter
+    def val(self, val):
+        self._val = val
+        self._val_text = val.strftime('%I:%M:%S %p')
+
+
+    @property
+    def ypos(self):
+        return self._ypos
+    
+    @ypos.setter
+    def ypos(self, val):
+        self._ypos = val   
+       
       
 class Heading(object): 
     def __init__(self, posrange, datalist, column_padding=0):      

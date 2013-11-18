@@ -11,7 +11,7 @@ import re
 import shlex
 import subprocess
 import sys
-from Controls import Gauge, HttpStatusGauge, MinMaxGauge, Heading
+from Controls import Gauge, HttpStatusGauge, ColorMinMaxGauge, AverageGauge, MinGauge, MaxGauge, Heading, Clock
 
 banner = "\ntoppu - A top-like tool for Heroku: https://github.com/grobertson/toppu"
 usage = "toppu -a <appname> [--solarized]" 
@@ -66,14 +66,12 @@ class Toppu(object):
         self.dynos = {}
         try:
             self.run()
-        except KeyboardInterrupt:
+        except KeyboardInterrupt, Exception:
             del self.display
-            print >> sys.stderr, "\nUnparseable log lines:\n"
-            for err in PARSE_ERRORS:
-                print >> sys.stderr, "{err}".format(err=err)
-        except Exception:
-            del self.display
-            raise
+            if OPTIONS.debug:
+                print >> sys.stderr, "\nUnparseable log lines:\n"
+                for err in PARSE_ERRORS:
+                    print >> sys.stderr, "{err}".format(err=err)
 
 
     def run(self):
@@ -99,7 +97,11 @@ class Toppu(object):
                 if self.dynos.__contains__(data['dyno']):
                     self.dynos[data['dyno']]['dyno'].update(data['dyno'])
                     self.dynos[data['dyno']]['connect'].update(int(data['connect'].replace('ms','')))
+                    self.dynos[data['dyno']]['connect_avg'].update(int(data['connect'].replace('ms','')))
+                    self.dynos[data['dyno']]['connect_max'].update(int(data['connect'].replace('ms','')))
                     self.dynos[data['dyno']]['service'].update(int(data['service'].replace('ms','')))
+                    self.dynos[data['dyno']]['service_avg'].update(int(data['connect'].replace('ms','')))
+                    self.dynos[data['dyno']]['service_max'].update(int(data['connect'].replace('ms','')))
                     self.dynos[data['dyno']]['status'].update(data['status'])
                 else:
                     #if the dict didn't exist, add it and make a new Controls.Gauge 
@@ -107,35 +109,72 @@ class Toppu(object):
                     self.dynos[data['dyno']]['dyno'] = Gauge(   self.display.STDSCR, 
                                                                 self.display.rowrange[int(d_number)], 
                                                                 self.display.colrange[0], 
-                                                                data['dyno'])
-                    
-                    self.dynos[data['dyno']]['connect'] = MinMaxGauge(self.display.STDSCR, 
-                                                                self.display.rowrange[int(d_number)], 
-                                                                self.display.colrange[1], 
-                                                                int(data['connect'].replace('ms','')), 
-                                                                units='ms')
-                    
-                    self.dynos[data['dyno']]['service'] = MinMaxGauge(self.display.STDSCR, 
-                                                                self.display.rowrange[int(d_number)], 
-                                                                self.display.colrange[2], 
-                                                                int(data['service'].replace('ms','')), 
-                                                                units='ms')
+                                                                data['dyno'], width=self.display.column_width)
                     
                     self.dynos[data['dyno']]['status'] = HttpStatusGauge( self.display.STDSCR, 
                                                                 self.display.rowrange[int(d_number)], 
+                                                                self.display.colrange[1], 
+                                                                data['status'], width=self.display.column_width)
+                    
+                    self.dynos[data['dyno']]['connect'] = ColorMinMaxGauge(self.display.STDSCR, 
+                                                                self.display.rowrange[int(d_number)], 
+                                                                self.display.colrange[2], 
+                                                                int(data['connect'].replace('ms','')), 
+                                                                units='ms', width=self.display.column_width,
+                                                                left=True)
+                                                                
+                    self.dynos[data['dyno']]['connect_avg'] = AverageGauge(self.display.STDSCR, 
+                                                                self.display.rowrange[int(d_number)], 
                                                                 self.display.colrange[3], 
-                                                                data['status'])
+                                                                int(data['connect'].replace('ms','')), 
+                                                                units='ms', width=self.display.column_width,
+                                                                left=True)
+                    
+                    self.dynos[data['dyno']]['connect_max'] = MaxGauge(self.display.STDSCR, 
+                                                                self.display.rowrange[int(d_number)], 
+                                                                self.display.colrange[4], 
+                                                                int(data['connect'].replace('ms','')), 
+                                                                units='ms', width=self.display.column_width,
+                                                                left=True)
+                                                                
+                    self.dynos[data['dyno']]['service'] = ColorMinMaxGauge(self.display.STDSCR, 
+                                                                self.display.rowrange[int(d_number)], 
+                                                                self.display.colrange[5], 
+                                                                int(data['service'].replace('ms','')), 
+                                                                units='ms', width=self.display.column_width,
+                                                                left=True)
+                    
+                    self.dynos[data['dyno']]['service_avg'] = AverageGauge(self.display.STDSCR, 
+                                                                self.display.rowrange[int(d_number)], 
+                                                                self.display.colrange[6], 
+                                                                int(data['service'].replace('ms','')), 
+                                                                units='ms', width=self.display.column_width,
+                                                                left=True)
+            
+                    self.dynos[data['dyno']]['service_max'] = MaxGauge(self.display.STDSCR, 
+                                                                self.display.rowrange[int(d_number)], 
+                                                                self.display.colrange[7], 
+                                                                int(data['service'].replace('ms','')), 
+                                                                units='ms', width=self.display.column_width,
+                                                                left=True)
+                    
+                    
                     self.dynos[data['dyno']]['dyno'].draw()
                     self.dynos[data['dyno']]['connect'].draw()
+                    self.dynos[data['dyno']]['connect_avg'].draw()
+                    self.dynos[data['dyno']]['connect_max'].draw()
                     self.dynos[data['dyno']]['service'].draw()
+                    self.dynos[data['dyno']]['service_avg'].draw()
+                    self.dynos[data['dyno']]['service_max'].draw()
                     self.dynos[data['dyno']]['status'].draw()
-
+                    self.dynos[data['dyno']]['status'].draw()
 
             elif data['log_type'] == 'web':
                 continue
             elif data['log_type'] == 'worker':
                 continue
         
+            self.display.wallclock.update()
             c = self.display.STDSCR.getch()
             if not c == -1:
                 if c == ord('q'):
@@ -221,7 +260,7 @@ class LogParser(object):
 
 
 class Display(object):
-    ''' Big thanks to https://github.com/mooseman/pd_curses_stuff/ '''
+    ''' Hat tip to https://github.com/mooseman/pd_curses_stuff/ '''
     def __init__(self):
         self.STDSCR = curses.initscr()
         curses.start_color()
@@ -239,27 +278,33 @@ class Display(object):
         (y, x) = self.STDSCR.getmaxyx() 
         self.maxrows = y  
         self.maxcols = x
-        
+        grid_margin = 1
         #scroll port
         #self.STDSCR.setscrreg(6, self.maxrows-2)
         
         #every row is a display row.
-        self.rowrange = list(range(5, self.maxrows-2))  
+        self.rowrange = list(range(grid_margin, self.maxrows - grid_margin))  
 
-        columns = 4
+        self.columns = 8
+        self.column_width = self.maxcols / self.columns
+        
         # leading spaces, width of screen, width of a column
-        self.colrange = list(range( 1 , self.maxcols, self.maxcols / columns ) ) 
+        self.colrange = list(range( 0 , self.maxcols, self.maxcols / self.columns ) ) 
 
         self.colheadposlist = list( (y,x) 
-            for y in range(5, 6) 
+            for y in range(grid_margin, grid_margin + 1) 
                 for x in self.colrange )
                         
         # Draw the headings
+        title = " ".join(["toppu","-",APP_NAME])
+        
+        self.STDSCR.addstr(0, self.maxcols - title.__len__(), title, curses.color_pair(7))
+        self.wallclock = Clock(self.STDSCR, 0, 2)
         bar = ""
-        for i in range(1, self.maxcols):
+        for i in range(0, self.maxcols):
             bar = bar + " "
-        self.STDSCR.addstr(5, 1, bar, curses.A_REVERSE) 
-        self.coldata = ["Dyno", "Connect", "Service","Status"]
+        self.STDSCR.addstr(grid_margin, 0, bar, curses.A_REVERSE) 
+        self.coldata = ["Dyno", "Status", "Connect", "Avg", "Max", "Service", "Avg", "Max"]
         self.ch = Heading(self.colheadposlist, self.coldata, column_padding=4)  
         for label, pos in zip(self.coldata, self.colheadposlist):
             self.STDSCR.addstr(pos[0], pos[1], label, curses.A_REVERSE)
@@ -275,10 +320,6 @@ class Display(object):
     def palette(self):
         for col in range(1,255):
             curses.init_pair(col, col, 0)
-            #pass
-        #curses.init_pair(7, 7, 0)
-        #curses.init_pair(3, 3, 0)
-        #curses.init_pair(4, 4, 0)
         
 
 if __name__ == "__main__":
