@@ -32,6 +32,7 @@ class Gauge(object):
         self._bg = bg
         self._width = width
         self._left = left
+        self._history = []
         
         self.label = label
         self.units = units
@@ -150,7 +151,6 @@ class Gauge(object):
 
 
 class HistoryGauge(Gauge):
-    _history = []
     
     @property
     def val(self):
@@ -174,7 +174,7 @@ class HistoryGauge(Gauge):
     def max(self):
         try:
             val = max(self._history)
-        except (TypeError, ZeroDivisionError), e:
+        except (TypeError, ZeroDivisionError, ValueError), e:
             val = 0
         return val        
 
@@ -213,9 +213,13 @@ class MinGauge(HistoryGauge):
         pass
         
 class MaxGauge(HistoryGauge):    
-    def dummy(self):
-        pass
+    @property
+    def content(self):
+        data = [self.label, str(self.max()), self.units, "    "]            
+        c = " ".join(data)                
+        return c
     
+
 class ColorMinMaxGauge(HistoryGauge):
 
     def update(self, val):
