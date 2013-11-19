@@ -100,8 +100,8 @@ class Toppu(object):
                     self.dynos[data['dyno']]['connect_avg'].update(int(data['connect'].replace('ms','')))
                     self.dynos[data['dyno']]['connect_max'].update(int(data['connect'].replace('ms','')))
                     self.dynos[data['dyno']]['service'].update(int(data['service'].replace('ms','')))
-                    self.dynos[data['dyno']]['service_avg'].update(int(data['connect'].replace('ms','')))
-                    self.dynos[data['dyno']]['service_max'].update(int(data['connect'].replace('ms','')))
+                    self.dynos[data['dyno']]['service_avg'].update(int(data['service'].replace('ms','')))
+                    self.dynos[data['dyno']]['service_max'].update(int(data['service'].replace('ms','')))
                     self.dynos[data['dyno']]['status'].update(data['status'])
                 else:
                     #if the dict didn't exist, add it and make a new Controls.Gauge 
