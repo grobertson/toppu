@@ -198,7 +198,6 @@ class LogStream(object):
                              stderr=subprocess.STDOUT)
         return iter(heroku.stdout.readline, b'')
     
-    
 
 class LogParser(object):
     ''' Let's read some loglines, shall we? '''
@@ -208,38 +207,26 @@ class LogParser(object):
 
     def parse(self, line):
         """Tries to parse a single Heroku logline"""
-        line = re.sub('\n', '', line)
-        line_halves = re.split('\]\: ', line)
-        line_meta = re.split(' ', line_halves[0])
-
-        parsed_data = dict()
-        parsed_data['timestamp'] = line_meta[0]
-        if line_meta.__len__() > 1:
-            try:
-                parsed_type = re.search('^([a-zA-Z]+)\[([a-zA-Z]+)', line_meta[1])
-                parsed_data['log_source'] = parsed_type.group(1)
-                parsed_data['log_type'] = parsed_type.group(2)
-                parsed_time = re.match(
-                    '([\d][\d][\d][\d])\-([\d][\d])\-([\d][\d])T([\d][\d])\:([\d][\d])\:([\d][\d])',
-                    parsed_data['timestamp'])
-                year_int = int(parsed_time.group(1))
-                month_int = int(parsed_time.group(2))
-                day_int = int(parsed_time.group(3))
-                hour_int = int(parsed_time.group(4))
-                minute_int = int(parsed_time.group(5))
-                second_int = int(parsed_time.group(6))
-                parsed_data['log_time'] = datetime.datetime(
-                    year_int, month_int, day_int, hour_int, minute_int, second_int)
-            except AttributeError:
-                PARSE_ERRORS.append(line)
-                return False
-        else:
+        try:
+            (year, month, day, hour, minute, second, microseconds, offset_hour, offset_minute, source, process, logentry) = re.match('^(\d\d\d\d)-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)\.([\d]+)\+(\d\d):(\d\d) ([a-z]+)\[([a-zA-Z0-9_.]+)\]: ([0-9a-z-A-Z\-_\.\[\]:\?\#\",/\ ={}\'\(\)<>]+)$', line).groups()
+        except:
+            pass
+        
+        try:
+            parsed_data = dict()
+            parsed_data['timestamp'] = " ".join(["-".join([year, month, day]), ":".join([hour, minute, second])])
+            parsed_data['log_time'] = datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(second))
+            parsed_data['log_source'] = source
+            parsed_data['log_type'] = process
+        except (AttributeError, UnboundLocalError):
+            PARSE_ERRORS.append(line)
             return False
 
+        #TODO: This still needs work on spaces in values surrounded by " " 
         if parsed_data['log_source'] == "heroku":
-            if line_halves.__len__() > 1:
-                line_halves[1] = re.sub(', ', ',', line_halves[1])
-                line_chunks = re.split(' ', line_halves[1])
+            if logentry.__len__() > 1:
+                logentry = re.sub(', ', ',', logentry)
+                line_chunks = re.split(' ', logentry)
                 for chunk in line_chunks:
                     line_chunks = re.split('=', chunk)
                     if line_chunks.__len__() > 2:
@@ -252,8 +239,8 @@ class LogParser(object):
             else:
                 return False
         else:
-            # app (i.e. app[instance] or (async job output) app.*.*[guid] lines
-            # would need specific parsing and you'd do that somewhere around here
+            # TODO: [app] 
+            # Needs parsing. Do that here.
             return False
 
         return parsed_data
