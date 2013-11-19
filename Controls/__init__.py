@@ -351,6 +351,7 @@ class Box(object):
         
         top = ""
         for i in range(startx, endx):
+            #TODO: extended chars aren't displaying as expected. docs suck. -FGR
             top = top + chr(205)
         
         self.top = top

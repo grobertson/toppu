@@ -203,7 +203,7 @@ class LogStream(object):
 class LogParser(object):
     ''' Let's read some loglines, shall we? '''
     def __init__(self):
-        # 
+        # you want options, maybe?
         return None
 
     def parse(self, line):
