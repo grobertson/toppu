@@ -215,7 +215,10 @@ class MinGauge(HistoryGauge):
 class MaxGauge(HistoryGauge):    
     @property
     def content(self):
-        data = [self.label, str(self.max()), self.units, "    "]            
+        if self.max() > self.val:
+            data = [self.label, str(self.max()), self.units, "    "]
+        else:
+            data = [self.label, str(self.val), self.units, "    "]        
         c = " ".join(data)                
         return c
     
@@ -257,7 +260,7 @@ class AverageGauge(HistoryGauge):
         if not self.avg():
             c = " ".join([self.label, self.val_text, self.units])
         else:
-            data = [self.label, self.val_text, self.units, "    "]            
+            data = [self.label, str(self.avg()), self.units, "    "]            
             c = " ".join(data)
         return c
 
